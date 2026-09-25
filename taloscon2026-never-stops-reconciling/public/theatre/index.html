@@ -595,11 +595,11 @@ function layout(){
 
 /* ------------------------------------------------------------------- canvas */
 const cv = document.getElementById("graph"), ctx = cv.getContext("2d");
-let W=0, H=0, DPR=1;
+let W=0, H=0, DPR=1, DPR_OVERRIDE=0;
 let view = {k:1, x:0, y:0};
 function resize(){
   const r = cv.getBoundingClientRect();
-  DPR = Math.min(2, window.devicePixelRatio||1);
+  DPR = DPR_OVERRIDE || Math.min(2, window.devicePixelRatio||1);
   W = Math.max(1, r.width); H = Math.max(1, r.height);
   cv.width = Math.round(W*DPR); cv.height = Math.round(H*DPR);
   ctx.setTransform(DPR,0,0,DPR,0,0);
@@ -1316,6 +1316,15 @@ function measureChrome(){
 }
 function onResize(){ resize(); resizeTL(); measureChrome(); drawTimeline(); }
 window.addEventListener("resize", onResize);
+// Slide embedding: the host page scales this iframe, so it reports the real device pixels
+// per CSS pixel here, and the canvases render at that density instead of looking blurry.
+window.addEventListener("message", e => {
+  if (e.origin !== location.origin || !e.data || e.data.type !== "theatre-dpr") return;
+  const d = parseFloat(e.data.dpr);
+  if (!(d > 0) || Math.abs(d - DPR_OVERRIDE) < .01) return;
+  DPR_OVERRIDE = Math.min(4, d);
+  onResize();
+});
 resize(); resizeTL(); measureChrome();
 requestAnimationFrame(frame);
 
