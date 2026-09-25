@@ -43,15 +43,35 @@ function measure() {
   height.value = h / scale.value
 }
 
+// The viewer draws on <canvas>, sized for its own devicePixelRatio. Scaled into the slide
+// (and the slide scaled to the screen) that bitmap gets stretched and looks blurry, so tell
+// the viewer the real device pixels per CSS pixel of the iframe.
+const frame = ref<HTMLIFrameElement>()
+
+function sendDpr() {
+  if (!frame.value?.contentWindow || !box.value)
+    return
+  const onScreen = box.value.getBoundingClientRect().width
+  const dpr = (onScreen / box.value.offsetWidth) * scale.value * window.devicePixelRatio
+  frame.value.contentWindow.postMessage({ type: 'theatre-dpr', dpr }, window.location.origin)
+}
+
 let observer: ResizeObserver | undefined
 
 onMounted(() => {
   measure()
-  observer = new ResizeObserver(measure)
+  observer = new ResizeObserver(() => {
+    measure()
+    sendDpr()
+  })
   observer.observe(box.value!)
+  window.addEventListener('resize', sendDpr)
 })
 
-onBeforeUnmount(() => observer?.disconnect())
+onBeforeUnmount(() => {
+  observer?.disconnect()
+  window.removeEventListener('resize', sendDpr)
+})
 
 // only load (and so start playback) once the slide is on screen and has a real size
 const live = computed(() => isActive.value && scale.value > 0 && ['slide', 'presenter'].includes($renderContext.value))
@@ -61,7 +81,9 @@ const live = computed(() => isActive.value && scale.value > 0 && ['slide', 'pres
   <div ref="box" class="td">
     <iframe
       v-if="live"
+      ref="frame"
       :src="src"
+      @load="sendDpr"
       title="Reconciliation Theatre"
       :style="{ width: `${width}px`, height: `${height}px`, transform: `scale(${scale})` }"
     />

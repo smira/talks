@@ -12,7 +12,7 @@ theme: ../themes/taloscon2026
 ---
 ```
 
-Run `bun --bun run theme:dev` from the repository root to preview `example.md`.
+Run `npm run theme:dev` from the repository root to preview `example.md`.
 
 ## Layouts
 
