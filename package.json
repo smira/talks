@@ -1,0 +1,20 @@
+{
+  "name": "talks",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "themes/*"
+  ],
+  "scripts": {
+    "dev": "slidev taloscon2026-never-stops-reconciling/slides.md --bind $(tailscale ip -4) --remote",
+    "build": "slidev build taloscon2026-never-stops-reconciling/slides.md",
+    "export": "slidev export taloscon2026-never-stops-reconciling/slides.md --output taloscon2026-never-stops-reconciling/slides.pdf",
+    "theme:dev": "slidev themes/taloscon2026/example.md",
+    "theme:build": "slidev build themes/taloscon2026/example.md",
+    "theme:export": "slidev export themes/taloscon2026/example.md"
+  },
+  "devDependencies": {
+    "@slidev/cli": "latest",
+    "playwright-chromium": "latest"
+  }
+}
