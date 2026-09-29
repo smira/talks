@@ -11,16 +11,30 @@ Andrey Smirnov
 
 Engineering Lead @ Sidero Labs
 
+<!--
+
+Hello, I'm Andrey Smirnov, Engineering Lead at Sidero Labs.
+Thanks for joining me today at TalosCon 2026.
+Today I'll talk about Talos Linux, the OS that never stops reconciling.
+
+-->
+
 ---
 
 # Agenda
 
-- A bit of history: machine config, bootkube and reboots
-- The trouble with a sequential boot
-- Why controllers & resources? Meet COSI
+- A bit of history
+- Why controllers & resources?
 - Demo: Reconciliation Theatre
-- What COSI gave us: Talos, then Omni
-- We're just getting started
+- What's next
+
+<!--
+
+Today we will cover a bit of history of Talos Linux to explain how we got an the operating system 
+which has controllers and resources in its core.
+We need a bit of a history dive to explain what were the problems we were trying to solve and how we solved them.
+
+-->
 
 ---
 layout: image-right
@@ -39,28 +53,34 @@ Engineering Lead @ Sidero Labs
 - Based in **Tbilisi, Georgia**
 
 <!--
-Andrey leads engineering at Sidero Labs, the team behind Talos Linux and Omni.
-He's been shaping Talos since 2019, back when "an OS with no SSH and no shell"
-sounded like a dare, and has spent the years since proving it's the right way
-to run Kubernetes. He lives in Tbilisi, Georgia.
 
-Photo: Tbilisi skyline with Sameba Cathedral, Wikimedia Commons, CC0.
+I was involved in Talos development since 2019.
+Today I'm leading the engineering team at Sidero Labs, the company behind Talos Linux and Omni.
+
 -->
 
 ---
 
 # A bit of history
 
-Talos historically was:
+From day one, Talos was built to be:
 
 <v-clicks>
 
 - Minimal
 - API-driven
 - Secure
-- Immutable <span v-click="5" class="tc-note">— more immutable than you would like it</span>
+- Immutable <span v-click="5" class="tc-note">— too immutable, even for us</span>
 
 </v-clicks>
+
+<!--
+
+Even early on, Talos was designed to be minimal, API-driven, secure and immutable.
+But immutability might mean different things to different people. 
+For example Talos had and still has immutable root filesystem, but it was a bit too immutable in terms of configuration: any change to the machine config required a reboot, which was not a good user experience.
+
+-->
 
 ---
 
@@ -72,8 +92,8 @@ Talos historically was:
   </thead>
   <tbody>
     <tr v-click>
-      <td>≤ v0.3</td><td>Jan 2020</td>
-      <td>Loaded from external storage on every boot, never stored on disk</td>
+      <td>≤ v0.3</td><td>Jul 2019 – Jan 2020</td>
+      <td>Fetched from cloud metadata or a URL on every boot, never written to disk</td>
     </tr>
     <tr v-click>
       <td>v0.4 – v0.6</td><td>Apr – Sep 2020</td>
@@ -97,11 +117,28 @@ v0.9 (Mar 2021) added `apply-config --immediate` — first changes applied witho
 clicks: 7
 ---
 
-# Control plane: the bootkube era
+# Kubernetes control plane: the bootkube era
 
 <BootkubeDiagram />
 
 <!--
+
+A bit of bootkube history:
+- Started at CoreOS in March 2016 (first commit by Aaron Levy), as the tool behind their
+  push for self-hosted Kubernetes; it was how CoreOS Tectonic installed clusters.
+- Moved to kubernetes-incubator in September 2016; last release v0.14.0 in October 2018.
+- After Red Hat acquired CoreOS (2018) the company stopped driving it; users kept it going:
+  Kinvolk (Lokomotive), Typhoon, and us — Talos adopted it in Oct 2019 (v0.3), ran a fork,
+  switched to upstream in v0.5, and sent fixes back (e.g. my etcd-transformer PR #1100, Aug 2020).
+- Users drifted away: Typhoon moved to static pods in v1.16.0 (Sep 2019), Talos in v0.9 (Mar 2021).
+- Is it alive? No. The repo is archived (kubernetes-retired/bootkube, last push Jun 2021) and
+  points to a kinvolk/bootkube fork that no longer exists; Lokomotive itself was discontinued.
+
+Talos ran Kubernetes controlplane components using Kubernetes itself - the project we used was called bootkube.
+This was a nice idea, it allowed a user to change Kubernetes control plane configuration by editing Kubernetes resources.
+But the approach was fragile: single control plane nodes required manual recovery on each reboot,
+bad change might eventually lead to a broken cluster, which could be recovered only by re-bootstrapping the controlplane from scratch.
+
 bootkube introduced in v0.3 (Oct 2019, "feat: use bootkube for cluster creation"),
 replaced in v0.9 (Mar 2021, "feat: replace bootkube with Talos-managed control plane").
 Upstream bootkube templates: kube-apiserver + pod-checkpointer are DaemonSets,
@@ -113,7 +150,7 @@ static pods down. Recovery: Talos recovery API (v0.5), recovers from etcd since 
 
 ---
 
-# Moving away from bootkube
+# The obvious plan
 
 <v-clicks>
 
@@ -124,6 +161,10 @@ static pods down. Recovery: Talos recovery API (v0.5), recovers from etcd since 
 </v-clicks>
 
 <!--
+
+We obviosly had to solve the bootkube's fragility problem by running the control plane natively on Talos.
+But this also with the design back then mean that any change to the control plane configuration would require a reboot, which was not a good user experience.
+
 v0.9 (Mar 2021): control plane runs as static pods, "whole subsystem is managed
 via resources/controllers from os-runtime" — first big user of the resource API
 (introduced in the same release).
@@ -169,16 +210,32 @@ The control plane must **react** to the node's state, not just to config<br>
 }
 </style>
 
+<!--
+
+But the problem was more broad than just acting on machine configuration changes.
+The control plane must react to the node's state, not just to config.
+For example, if a node's address changes (e.g. DHCP), the control plane must re-issue certificates with new SANs, and restart components.
+Or a jump in time might require an immediate certificate rotation.
+
+-->
+
 ---
 clicks: 10
 ---
 
-# Talos v0.8: boot is a sequence
+# Talos: boot is a sequence
 
 <SequenceBalloon />
 
 <!--
-Layers are grouped v0.8 sequencer phases:
+
+So why did we have a requirement to reboot Talos on any config change?
+
+Talos was designed with some modern ideas in mind, but the boot sequence was still sequential, similar to a traditional Linux boot sequence.
+
+On reboot, we shut down all sequences, and new boot sequence starts from scratch, but with the new configuration applied.
+
+Layers are grouped v0.8 sequencer phases (the 28 on the "What happened next" tile):
 Initialize: systemRequirements, integrity, discoverNetwork, setupNetwork, config;
 Boot: mountState, validateConfig, saveConfig, env, containerd, sharedFilesystems,
 ephemeral, verifyInstall, var, overlay, udevd, userDisks, userSetup, lvm,
@@ -192,13 +249,35 @@ Note that the network comes up before the config is even fetched.
 clicks: 6
 ---
 
-# Solution #1: wire the layers by hand
+# First attempt: wire the layers by hand
 
 <WiredBalloon />
 
 <!--
 One path for a single event (node address change), crossing three layers.
 Every other event (cert expiry, config change, …) needs its own hand-built path.
+
+
+"What about systemd?" (expect this question)
+- systemd already left runlevels behind: units declare dependencies (Requires=/Wants=,
+  After=/Before=), systemd builds a graph and starts units in parallel. Boot is a DAG.
+- But that graph is about *when units start*, not about *data*. Once a unit is up, it runs
+  until something explicitly restarts it. PartOf=/BindsTo=/PropagatesReloadTo= pass along
+  lifecycle events (restart, stop, reload), never values.
+- Triggers exist (.path = inotify on files, .timer, socket/device activation), but they only
+  start a unit; they don't compute "what should the SANs be now".
+- So our chain on a systemd + kubeadm node looks like:
+  1. address changes: systemd-networkd has no built-in hook scripts, so add
+     networkd-dispatcher (or NetworkManager-dispatcher) with a script
+  2. the script collects node addresses and diffs them against the cert's SANs (openssl)
+  3. re-issue: move the old cert away, `kubeadm init phase certs apiserver --apiserver-cert-extra-sans=…`
+  4. make consumers pick it up: kubelet only restarts a static pod when its manifest changes,
+     so touch the manifest / stop the container, or a .path unit on the cert runs a restart
+  5. and cert expiry is another path: kubeadm renews on `kubeadm upgrade`, otherwise a timer
+- Every arrow is glue someone writes, tests and maintains: exactly the hand-wired bridges here.
+- Punchline: systemd turned runlevels into a DAG of *start jobs*; we needed a graph of *state*,
+  where anything downstream re-runs whenever an input changes.
+
 -->
 
 ---
@@ -218,8 +297,7 @@ clicks: 4
 <v-clicks>
 
 - Hard to get a **minimal** Kubernetes <span class="tc-note">(at least back in 2020)</span>
-- Talos boots with **no disk** and **no etcd**, on minimal resources
-- Controllers and resources must run from **pure RAM**
+- Talos boots with **no disk** and **no etcd**: state has to live **in memory**
 - Debugging complex Kubernetes controllers wasn't fun <span class="tc-note">(Cluster API!)</span>
 
 </v-clicks>
@@ -238,11 +316,11 @@ clicks: 4
 layout: two-cols-header
 ---
 
-# So we reinvented the wheel: meet COSI
+# So we built our own wheel: meet COSI
 
 <div class="cosi-lead">
 
-**C**ommon **O**perating **S**ystem **I**nterface: a minimal stack
+**C**ommon **O**perating **S**ystem **I**nterface: a minimal controller runtime
 
 </div>
 
@@ -252,7 +330,7 @@ layout: two-cols-header
 
 - **Resources**: strictly defined metadata<br>(namespace, type, id, version, owner…) plus an opaque spec
 - **Controller runtime**: controllers declare inputs and outputs; strict ownership, only the owner writes a resource
-- **Reflects its state**: the graph of controllers and resources documents the system and its current state
+- **Self-documenting**: the graph of controllers and resources documents the system and its current state
 
 </v-clicks>
 
@@ -328,7 +406,7 @@ slide navigation back. In the demo: Space = play/pause, ←/→ = seek 1s, T = c
   </div>
   <div v-click class="card c2">
     <h3>Observability</h3>
-    <p>Every resource, even intermediate ones, can be captured when a bug is suspected: more than logs, the actual state.</p>
+    <p>When a bug is suspected, every resource, even intermediate ones, is captured. That is the actual state, not just logs.</p>
     <code>talosctl support</code>
   </div>
   <div v-click class="card c3">
@@ -341,7 +419,8 @@ slide navigation back. In the demo: Space = play/pause, ←/→ = seek 1s, T = c
   </div>
   <div v-click class="card c5">
     <h3>Reactivity</h3>
-    <p>The OS reacts to changes, environmental or user‑initiated.</p>
+    <p>Talos reacts to any change, environmental or user‑initiated. Machine config changes included: they apply live, without a reboot.</p>
+    <code>talosctl apply-config</code>
   </div>
 </div>
 
@@ -399,7 +478,76 @@ Testability: inputs and outputs are both resources, so a controller test sets up
 asserts on the shape of the outputs.
 Modularity: small controllers, grouped into modules (network, Kubernetes, …).
 Reactivity: back to the start of the talk: environmental changes (DHCP, cert expiry) and user changes
-flow through the same controllers.
+flow through the same controllers. This closes the reboot story from the machine-config slide:
+config changes apply live now; a reboot is only needed for a few things (kernel args, install disk).
+-->
+
+---
+
+# Downsides of COSI
+
+<div class="downs-lead">Honestly, we haven't found many</div>
+
+<div class="downs">
+  <div v-click class="down">
+    <h3>User-facing resources could be closer to Kubernetes</h3>
+    <p>Familiar ideas, different shape: <code>type</code>/<code>id</code> instead of <code>kind</code>/<code>name</code>, spec and status as separate resource types</p>
+  </div>
+  <div v-click class="down">
+    <h3>Everything as reconciliation is hard</h3>
+    <p>A big effort: every piece has to converge from any state, not just run once in order</p>
+    <p v-click class="pays">…but it pays off: the system is more <strong>reliable</strong> and <strong>adaptable</strong></p>
+  </div>
+</div>
+
+<style>
+.downs-lead {
+  margin: -12px 0 20px;
+  font-size: 22px;
+  color: var(--tc-muted);
+  font-style: italic;
+}
+.downs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+.down {
+  padding: 14px 18px;
+  border: 1.5px solid #d4d4d4;
+  border-top: 6px solid var(--tc-pink);
+  border-radius: 8px;
+}
+.down h3 {
+  margin: 0 0 10px;
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.down p {
+  margin: 0 0 10px;
+  font-size: 16px;
+  line-height: 1.35;
+}
+.down code {
+  font-size: 14px;
+}
+.down .pays {
+  margin-top: 14px;
+  font-size: 18px;
+  color: #2a8a6e;
+}
+.down .pays strong {
+  color: #2a8a6e;
+}
+</style>
+
+<!--
+Downsides — we haven't found many:
+- User-facing resources: we could have made the representation closer to Kubernetes objects
+  (field names, spec/status split within one object) to make it even more familiar.
+- Reconciliation everywhere is hard, a big engineering effort: every controller must converge from any
+  starting state and handle inputs appearing/disappearing. But it pays off: more reliable, more adaptable.
 -->
 
 ---
@@ -407,21 +555,21 @@ flow through the same controllers.
 # What happened next
 
 <div class="next">
-  <ol class="timeline">
-    <li v-click>
+  <ol v-click class="timeline">
+    <li>
       <span class="when">v0.9 · Mar 2021</span>
       <strong>Control plane</strong> on COSI: the first subsystem
     </li>
-    <li v-click>
+    <li>
       <span class="when">v0.11 · Jul 2021</span>
       <strong>Networking</strong> rewritten on COSI
-      <div class="sub">immediate network config changes, proper action on DHCP leases, operators, virtual IPs, observability</div>
+      <div class="sub">immediate network config changes, reacting to DHCP lease changes, operators, virtual IPs, observability</div>
     </li>
-    <li v-click>
+    <li>
       <span class="when">v0.13 · Oct 2021</span>
-      <strong>Member discovery</strong> and <strong>KubeSpan</strong>, built on COSI from day one
+      <strong>Cluster discovery</strong> and <strong>KubeSpan</strong>, built on COSI from day one
     </li>
-    <li v-click>
+    <li>
       <span class="when">every release since</span>
       New features built on COSI, existing subsystems <strong>refactored</strong> onto it
     </li>
@@ -429,7 +577,7 @@ flow through the same controllers.
 
   <div v-click class="goal">
     <div class="goal-title">Goal: 100% reactive to any config change</div>
-    <p>Not there yet: the sequential boot is still around, but it <strong>shrinks every release</strong></p>
+    <p>Not 100% yet: a few changes still need a reboot, and the sequential boot <strong>keeps shrinking</strong></p>
     <div class="tiles">
       <div class="tile">
         <div class="tile-label">controllers</div>
@@ -438,7 +586,7 @@ flow through the same controllers.
       </div>
       <div class="tile">
         <div class="tile-label">boot phases, sequential</div>
-        <div class="tile-value">28 <span>→</span> 19</div>
+        <div class="tile-value">28 <span>→</span> 20</div>
         <div class="tile-sub">v0.8 → v1.14</div>
       </div>
     </div>
@@ -551,14 +699,15 @@ flow through the same controllers.
 </style>
 
 <!--
+
 Sources (siderolabs/talos git history):
 - v0.9: "feat: replace bootkube with Talos-managed control plane", resource API introduced.
 - v0.11: "feat: replace networkd with new network implementation" (LinkStatus, AddressStatus,
   route controllers, DHCP4/DHCP6 operators, virtual IP operator).
 - v0.13: KubeSpan identity/peer controllers, cluster discovery registry, Affiliates.
 - Controllers registered in machined: v0.9 14, v0.11 46, v0.13 65, v1.0 86, v1.14 ~250
-  (the demo trace, v1.15 alpha, shows 254).
-- Initialize + Boot sequencer phases (unique): v0.8 28, v1.14 19; gone from the sequence:
+  (the demo trace, v1.15 alpha, shows 250).
+- Initialize + Boot sequencer phases (unique): v0.8 28, v1.14 20; gone from the sequence:
   discoverNetwork, setupNetwork, containerd, udevd, var, overlay, mountState, …
 -->
 
@@ -570,7 +719,7 @@ clicks: 5
 
 <div class="omni-lead">
 
-So confident in COSI that we **consciously** built Omni on top of it
+We trusted COSI enough to **deliberately** build Omni on top of it
 
 </div>
 
@@ -692,3 +841,16 @@ contacts:
     role: Engineering Lead @ Sidero Labs
     email: andrey.smirnov@siderolabs.com
 ---
+
+# Talos never stops reconciling.
+
+<p class="end-thanks">Thank you</p>
+
+<style>
+.end-thanks {
+  margin: 14px 0 0;
+  font-size: 26px;
+  font-weight: 500;
+  opacity: 0.8;
+}
+</style>
