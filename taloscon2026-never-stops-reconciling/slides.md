@@ -846,11 +846,39 @@ contacts:
 
 <p class="end-thanks">Thank you</p>
 
+<a class="end-qr" href="https://smira.github.io/talks/taloscon2026-never-stops-reconciling/">
+  <img src="./assets/qr.svg" alt="QR code: smira.github.io/talks/taloscon2026-never-stops-reconciling">
+  <span>Slides</span>
+</a>
+
 <style>
 .end-thanks {
   margin: 14px 0 0;
   font-size: 26px;
   font-weight: 500;
   opacity: 0.8;
+}
+.end-qr {
+  position: absolute;
+  right: 0;
+  top: 96px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 10px 8px;
+  border-radius: 10px;
+  background: #ffffff;
+  color: var(--tc-ink);
+  text-decoration: none;
+}
+.end-qr img {
+  display: block;
+  width: 150px;
+  height: 150px;
+}
+.end-qr span {
+  font-size: 14px;
+  font-weight: 700;
 }
 </style>
